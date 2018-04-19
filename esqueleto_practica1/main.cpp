@@ -43,7 +43,25 @@ World* ReadFromFile(const char* filename)
 }
 
 
-Spectrum calculateDiffuseComponent(PointLight* light, IntersectInfo& intersectInfo)
+
+gmtl::Rayf generateRay(gmtl::Point3f initialPosition, gmtl::Point3f finalPosition) {
+	// ray generated
+	gmtl::Rayf ray;
+
+	// set the direction of the ray
+
+	// Direction to the light being taken into account
+	gmtl::Vec3f direction(finalPosition - initialPosition);
+	normalize(direction);
+	ray.setOrigin(initialPosition + direction * 0.01f);
+	//ray.setOrigin(initialPosition);
+	ray.setDir(direction);
+
+	return ray;
+}
+
+
+Spectrum calculateDiffuseComponent(World* world, PointLight* light, IntersectInfo& intersectInfo)
 {
 	Standard* material = (Standard *)intersectInfo.material;
 	Spectrum colorDifuso = material->Kd.GetColor(intersectInfo);
@@ -55,28 +73,34 @@ Spectrum calculateDiffuseComponent(PointLight* light, IntersectInfo& intersectIn
 	Vector3f distanceVector = intersectVector - lightVector;
 	float squareLightDistanceToCollision = distanceVector[0] * distanceVector[0] + distanceVector[1] * distanceVector[1] + distanceVector[2] * distanceVector[2];
 
+	IntersectInfo infoShadow;
+	Ray shadowRay = generateRay(intersectInfo.position, lightPosition);
+	gmtl::Vec3f direction(lightPosition - intersectInfo.position);
+	world->intersect(infoShadow, shadowRay, gmtl::length(direction));
+	if (infoShadow.objectID == InvalidObjectID)
+	{
+		Vector3f directionLight = lightPosition - intersectInfo.position;
 
+		Vector3f normalNormalized = intersectInfo.normal;
+		normalize(normalNormalized);
 
-	Vector3f directionLight = lightPosition - intersectInfo.position;
+		normalize(directionLight);
 
-	Vector3f normalNormalized = intersectInfo.normal;
-	normalize(normalNormalized);
+		float productoEscalar = gmtl::dot(normalNormalized, directionLight);
 
-	normalize(directionLight);
+		float valorCoseno = productoEscalar > 0.0f ? productoEscalar : 0.0f;
 
-	float productoEscalar = gmtl::dot(normalNormalized, directionLight);
-
-	float valorCoseno = productoEscalar > 0.0f ? productoEscalar : 0.0f;
-
-
-	return Spectrum(colorDifuso[0] * (light->mIntensity / squareLightDistanceToCollision) * valorCoseno,
-		colorDifuso[1] * (light->mIntensity / squareLightDistanceToCollision) * valorCoseno,
-		colorDifuso[2] * (light->mIntensity / squareLightDistanceToCollision) * valorCoseno);
+		return Spectrum(colorDifuso[0] * (light->mIntensity / squareLightDistanceToCollision) * valorCoseno,
+			colorDifuso[1] * (light->mIntensity / squareLightDistanceToCollision) * valorCoseno,
+			colorDifuso[2] * (light->mIntensity / squareLightDistanceToCollision) * valorCoseno);
+	}
+	
+	return Spectrum(0.0f, 0.0f, 0.0f);
 
 }
 
 
-Spectrum calculateSpecularComponent(PointLight* light, IntersectInfo& intersectInfo)
+Spectrum calculateSpecularComponent(World* world, PointLight* light, IntersectInfo& intersectInfo)
 {
 	Standard* material = (Standard *)intersectInfo.material;
 	Spectrum colorEspecular = material->Ks.GetColor(intersectInfo);
@@ -90,29 +114,95 @@ Spectrum calculateSpecularComponent(PointLight* light, IntersectInfo& intersectI
 	Vector3f distanceVector = intersectVector - lightVector;
 	float squareLightDistanceToCollision = distanceVector[0] * distanceVector[0] + distanceVector[1] * distanceVector[1] + distanceVector[2] * distanceVector[2];
 
+	IntersectInfo infoShadow;
+	Ray shadowRay = generateRay(intersectInfo.position, lightPosition);
+	gmtl::Vec3f direction(lightPosition - intersectInfo.position);
+	world->intersect(infoShadow, shadowRay, gmtl::length(direction));
+	if (infoShadow.objectID == InvalidObjectID)
+	{
+		Vector3f directionLight = lightPosition - intersectInfo.position;
 
-	Vector3f directionLight = lightPosition - intersectInfo.position;
+		Vector3f normalNormalized = intersectInfo.normal;
+		normalize(normalNormalized);
 
-	Vector3f normalNormalized = intersectInfo.normal;
-	normalize(normalNormalized);
+		normalize(directionLight);
 
-	normalize(directionLight);
+		float escalarProduct = (gmtl::dot(normalNormalized, directionLight));
+		Vector3f vectorInterm1 = escalarProduct * normalNormalized;
+		Vector3f vectorInterm2 = 2.0f * vectorInterm1;
+		Vector3f rVector = vectorInterm2 - directionLight;
+		normalize(rVector);
 
-	float escalarProduct = (gmtl::dot(normalNormalized, directionLight));
-	Vector3f vectorInterm1 = escalarProduct * normalNormalized;
-	Vector3f vectorInterm2 = 2.0f * vectorInterm1;
-	Vector3f rVector = vectorInterm2 - directionLight;
-	normalize(rVector);
+		float productoEscalar = gmtl::dot(rVector, directionNormalized);
 
-	float productoEscalar = gmtl::dot(rVector, directionNormalized);
-
-	float valorCoseno = productoEscalar > 0.0f ? pow(productoEscalar, material->Kshi) : 0.0f;
+		float valorCoseno = productoEscalar > 0.0f ? pow(productoEscalar, material->Kshi) : 0.0f;
 	
 
-	return Spectrum(colorEspecular[0] * (light->mIntensity / squareLightDistanceToCollision) * valorCoseno,
-		colorEspecular[1] * (light->mIntensity / squareLightDistanceToCollision) * valorCoseno,
-		colorEspecular[2] * (light->mIntensity / squareLightDistanceToCollision) * valorCoseno);
+		return Spectrum(colorEspecular[0] * (light->mIntensity / squareLightDistanceToCollision) * valorCoseno,
+			colorEspecular[1] * (light->mIntensity / squareLightDistanceToCollision) * valorCoseno,
+			colorEspecular[2] * (light->mIntensity / squareLightDistanceToCollision) * valorCoseno);
+	}
 
+	return Spectrum(0.0f, 0.0f, 0.0f);
+
+}
+
+Spectrum traceRay(World* world, Ray& ray)
+{
+	IntersectInfo info;
+
+	world->intersect(info, ray);
+
+	if (info.objectID != InvalidObjectID)
+	{
+		//float value = 0.0f;
+
+		float difusoRojo = 0.0f;
+		float difusoVerde = 0.0f;
+		float difusoAzul = 0.0f;
+
+
+		float especularRojo = 0.0f;
+		float especularVerde = 0.0f;
+		float especularAzul = 0.0f;
+
+
+		Standard* material = (Standard *)info.material;
+		Spectrum colorDifuso = material->Kd.GetColor(info);
+		Spectrum colorEspecular = material->Ks.GetColor(info);
+
+
+		for (int i = 0; i < world->mLights.size(); ++i)
+		{
+			PointLight* light = (PointLight*)world->mLights[i];
+
+			// Calcular Iluminacion Difusa
+			Spectrum diffuseColor = calculateDiffuseComponent(world, light, info);
+			difusoRojo += diffuseColor[0];
+			difusoVerde += diffuseColor[1];
+			difusoAzul += diffuseColor[2];
+
+			// Calcular Iluminacion especular
+			Spectrum especularColor = calculateSpecularComponent(world, light, info);
+			especularRojo += especularColor[0];
+			especularVerde += especularColor[1];
+			especularAzul += especularColor[2];
+		}
+
+		// Añadir luz ambiente
+		float ambienteRojo = material->Ka_color.GetColor(info)[0] * AMBIENT_INTENSITY;
+		float ambienteVerde = material->Ka_color.GetColor(info)[1] * AMBIENT_INTENSITY;
+		float ambienteAzul = material->Ka_color.GetColor(info)[2] * AMBIENT_INTENSITY;
+
+		return Spectrum(difusoRojo + especularRojo + ambienteRojo, 
+			difusoVerde + especularVerde + ambienteVerde,
+			difusoAzul + especularAzul + ambienteAzul);
+
+	}
+	else
+	{
+		return Spectrum(0.0f, 0.0f, 0.0f);
+	}
 }
 
 void render_image(World* world, unsigned int dimX, unsigned int dimY, float* image, float* alpha)
@@ -125,110 +215,15 @@ void render_image(World* world, unsigned int dimX, unsigned int dimY, float* ima
 		for (int j = 0; j < dimX; ++j)
 		{
 
+			//Calcular rayo desde cámara a pixel
 			Ray ray = camera->generateRay(j, i);
 
-			IntersectInfo info;
+			Spectrum totalColor = traceRay(world, ray);
 
-			world->intersect(info, ray);
-
-			if (info.objectID != InvalidObjectID)
-			{
-				//float value = 0.0f;
-
-				float difusoRojo = 0.0f;
-				float difusoVerde = 0.0f;
-				float difusoAzul = 0.0f;
-
-
-				float especularRojo = 0.0f;
-				float especularVerde = 0.0f;
-				float especularAzul = 0.0f;
-
-
-				Standard* material = (Standard *)info.material;
-				Spectrum colorDifuso = material->Kd.GetColor(info);
-				Spectrum colorEspecular = material->Ks.GetColor(info);
-
-				
-				//for (auto light : world->mLights)
-				//{
-				for(int i = 0; i < world->mLights.size(); ++i)
-				{
-					/*Standard* material = (Standard *)info.material;
-					
-
-					PointLight* light = (PointLight*)world->mLights[i];
-					Point3f lightPosition = light->getWorldPosition();
-
-					Vector3f lightVector = Vector3f(lightPosition[0], lightPosition[1], lightPosition[2]);
-					Vector3f intersectVector = Vector3f(info.position[0], info.position[1], info.position[2]);
-					Vector3f distanceVector = intersectVector - lightVector;
-					float squareLightDistanceToCollision = distanceVector[0] * distanceVector[0] + distanceVector[1] * distanceVector[1] + distanceVector[2] * distanceVector[2];
-					*/
-
-					PointLight* light = (PointLight*)world->mLights[i];
-
-					// Calcular Iluminacion Difusa
-
-					/*Vector3f directionLight = lightPosition - info.position;
-
-					Vector3f normalNormalized = info.normal;
-					normalize(normalNormalized);
-
-					normalize(directionLight);
-
-					float productoEscalar = gmtl::dot(normalNormalized, directionLight);
-
-					float valorCoseno = productoEscalar > 0.0f ? productoEscalar : 0.0f;
-					difusoRojo += colorDifuso[0] * (light->mIntensity / squareLightDistanceToCollision) * valorCoseno;
-					difusoVerde += colorDifuso[1] * (light->mIntensity / squareLightDistanceToCollision) * valorCoseno;
-					difusoAzul += colorDifuso[2] * (light->mIntensity / squareLightDistanceToCollision) * valorCoseno;*/
-
-					Spectrum diffuseColor = calculateDiffuseComponent(light, info);
-					difusoRojo += diffuseColor[0];
-					difusoVerde += diffuseColor[1];
-					difusoAzul += diffuseColor[2];
-					
-					// Calcular Iluminacion especular
-
-					/*Vector3f directionNormalized = -ray.getDir();
-					normalize(directionNormalized);
-
-					float escalarProduct = (gmtl::dot(normalNormalized, directionLight));
-					Vector3f vectorInterm1 = escalarProduct * normalNormalized;
-					Vector3f vectorInterm2 = 2.0f * vectorInterm1;
-					Vector3f rVector = vectorInterm2 - directionLight;
-					normalize(rVector);
-
-					productoEscalar = gmtl::dot(rVector, directionNormalized);
-
-					valorCoseno = productoEscalar > 0.0f ? pow(productoEscalar, material->Kshi) : 0.0f;
-					especularRojo += colorEspecular[0] * (light->mIntensity / squareLightDistanceToCollision) * valorCoseno;
-					especularVerde += colorEspecular[1] * (light->mIntensity / squareLightDistanceToCollision) * valorCoseno;
-					especularAzul += colorEspecular[2] * (light->mIntensity / squareLightDistanceToCollision) * valorCoseno;*/
-					Spectrum especularColor = calculateSpecularComponent(light, info);
-					especularRojo += especularColor[0];
-					especularVerde += especularColor[1];
-					especularAzul += especularColor[2];
-				}
-				
-
-				float ambienteRojo = material->Ka_color.GetColor(info)[0] * AMBIENT_INTENSITY;
-				float ambienteVerde = material->Ka_color.GetColor(info)[1] * AMBIENT_INTENSITY;
-				float ambienteAzul = material->Ka_color.GetColor(info)[2] * AMBIENT_INTENSITY;
-
-				image[(i * dimX * 3) + (j * 3)] = ambienteRojo + difusoRojo + especularRojo;
-				image[(i * dimX * 3) + (j * 3) + 1] = ambienteVerde + difusoVerde + especularVerde;
-				image[(i * dimX * 3) + (j * 3) + 2] = ambienteAzul + difusoAzul + especularAzul;
-				
-			}
-			else
-			{
-
-				image[(i * dimX * 3) + (j * 3)] = 0.0f;
-				image[(i * dimX * 3) + (j * 3) + 1] = 0.0f;
-				image[(i * dimX * 3) + (j * 3) + 2] = 0.0f;
-			}
+			image[(i * dimX * 3) + (j * 3)] = totalColor[0];
+			image[(i * dimX * 3) + (j * 3) + 1] = totalColor[1];
+			image[(i * dimX * 3) + (j * 3) + 2] = totalColor[2];
+			
 		}
 	}
 
