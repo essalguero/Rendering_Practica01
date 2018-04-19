@@ -147,7 +147,7 @@ Spectrum calculateSpecularComponent(World* world, PointLight* light, IntersectIn
 
 }
 
-Spectrum traceRay(World* world, Ray& ray)
+Spectrum traceRay(World* world, Ray& ray, int recursivityDepth = 0)
 {
 	IntersectInfo info;
 
@@ -194,9 +194,34 @@ Spectrum traceRay(World* world, Ray& ray)
 		float ambienteVerde = material->Ka_color.GetColor(info)[1] * AMBIENT_INTENSITY;
 		float ambienteAzul = material->Ka_color.GetColor(info)[2] * AMBIENT_INTENSITY;
 
-		return Spectrum(difusoRojo + especularRojo + ambienteRojo, 
-			difusoVerde + especularVerde + ambienteVerde,
-			difusoAzul + especularAzul + ambienteAzul);
+
+
+		Spectrum  nextLevelLight = Spectrum();
+		if (recursivityDepth > 0) {
+
+			if (material->Kr.GetColor(info)[0] != 0.0f || material->Kr.GetColor(info)[1] != 0.0f || material->Kr.GetColor(info)[2] != 0.0f)
+			{
+				info.material->Ka_color.GetColor(info);
+			}
+
+			// Calculo de la dirección reflejada
+
+			gmtl::Vec3f vVector = ray.getDir();
+
+			gmtl::Vec3f rVector;
+
+			gmtl::reflect(rVector, vVector, info.normal);
+
+			gmtl::Rayf nextRay = gmtl::Rayf(info.position + rVector * 0.01f, rVector);
+
+			nextLevelLight = traceRay(world, nextRay, --recursivityDepth) * material->Kr.GetColor(info);
+
+
+		}
+
+		return Spectrum(difusoRojo + especularRojo + ambienteRojo + nextLevelLight[0],
+			difusoVerde + especularVerde + ambienteVerde + nextLevelLight[1],
+			difusoAzul + especularAzul + ambienteAzul + nextLevelLight[2]);
 
 	}
 	else
@@ -218,7 +243,7 @@ void render_image(World* world, unsigned int dimX, unsigned int dimY, float* ima
 			//Calcular rayo desde cámara a pixel
 			Ray ray = camera->generateRay(j, i);
 
-			Spectrum totalColor = traceRay(world, ray);
+			Spectrum totalColor = traceRay(world, ray, 2);
 
 			image[(i * dimX * 3) + (j * 3)] = totalColor[0];
 			image[(i * dimX * 3) + (j * 3) + 1] = totalColor[1];
