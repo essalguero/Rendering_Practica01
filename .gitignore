@@ -880,3 +880,5 @@ rendering_lib/include/world\.h
 whitted_scene/data/pattern\.tga
 
 whitted_scene/scene\.dgc
+
+esqueleto_practica1/deploy/x64/Release/rendering\.exp

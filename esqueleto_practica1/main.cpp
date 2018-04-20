@@ -147,6 +147,57 @@ Spectrum calculateSpecularComponent(World* world, PointLight* light, IntersectIn
 
 }
 
+
+
+gmtl::Vec3f refractedDirection(float ni, float nt, const gmtl::Vec3f& V, const gmtl::Vec3f& N)
+{
+	gmtl::Vec3f T;
+	float eta;
+
+	eta = ni / nt;
+	float c1 = -dot(V, N);
+	float c2_op = 1.0f - eta * eta*(1.0f - c1 * c1);
+	if (c2_op < 0.0f)
+		return gmtl::Vec3f(0.0f);
+
+	float c2 = sqrt(c2_op);
+	T = eta * V + (eta*c1 - c2)*N;
+
+	return T;
+}
+
+gmtl::Vec3f transmittedDirection(bool& entering, const gmtl::Vec3f& N, const gmtl::Vec3f& V, const Standard* mat)
+{
+	gmtl::Vec3f normal_refraction = N;
+	bool exitingObject = dot(N, -V) < 0.0f;
+	float ni = 0.0f;
+	float nt = 0.0f;
+
+	if (exitingObject)
+	{
+		ni = mat->refractionIndex;
+		nt = 1.0003f; // air refraction index
+		normal_refraction = -normal_refraction;
+	}
+	else
+	{
+		ni = 1.0003f; // air refraction index
+		nt = mat->refractionIndex;
+	}
+
+	gmtl::Vec3f T = refractedDirection(ni, nt, V, normal_refraction);
+
+	entering = !exitingObject;
+	return T;
+}
+
+
+
+
+
+
+
+
 Spectrum traceRay(World* world, Ray& ray, int recursivityDepth = 0)
 {
 	IntersectInfo info;
@@ -208,20 +259,60 @@ Spectrum traceRay(World* world, Ray& ray, int recursivityDepth = 0)
 
 			reflexionLight = traceRay(world, reflexionRay, recursivityDepth - 1) * material->Kr.GetColor(info);
 
+			gmtl::Vec3f normalVector = info.normal;
+
 			// Calculo de la dirección de refracción
-			//material->refractionIndex
+			// Check values are correct and also the angle
 
-			float c1 = gmtl::dot(ray.getDir(), info.normal);
+			if (material->refractionIndex != 0)
+			{
 
-			gmtl::Vec3f st = material->refractionIndex * (-ray.getDir() + c1 * info.normal);
+				/*float refractionIndexColision = 0.0f;
 
-			float c2 = sqrt(1 - ((material->refractionIndex * material->refractionIndex) * (1 - (c1 * c1))));
+				if (gmtl::dot(info.normal, ray.getDir()) > 0.0f)
+				{
+					refractionIndexColision = material->refractionIndex;
+					normalVector = -normalVector;
+				}
+				else
+				{
+					refractionIndexColision = 1.0f / material->refractionIndex;
+				}
 
-			gmtl::Vec3f t = material->refractionIndex * -ray.getDir() + (material->refractionIndex * c1 - c2) * info.normal;
+				float c1 = gmtl::dot(ray.getDir(), normalVector);
 
-			gmtl::Rayf refractionRay = gmtl::Rayf(info.position + t * 0.01f, t);
+				gmtl::Vec3f st = refractionIndexColision * (-ray.getDir() + c1 * normalVector);
+				float heckbertData = 1 - (refractionIndexColision * refractionIndexColision) * (1 - (c1 * c1));
+				
+				gmtl::Vec3f t;
 
-			refractionLight = traceRay(world, refractionRay, recursivityDepth - 1) * material->Kt.GetColor(info);
+				if (heckbertData >= 0.0f)
+				{
+					float c2 = sqrt(heckbertData);
+					t = refractionIndexColision * -ray.getDir() + (refractionIndexColision * c1 - c2) * normalVector;
+
+					normalize(t);
+					gmtl::Rayf refractionRay = gmtl::Rayf(info.position + t * 0.01f, t);
+					refractionLight = traceRay(world, refractionRay, recursivityDepth - 1) * material->Kt.GetColor(info);
+				}
+				else {
+					gmtl::Vec3f vVector = ray.getDir();
+					gmtl::reflect(t, vVector, info.normal);
+					normalize(t);
+					gmtl::Rayf refractionRay = gmtl::Rayf(info.position + t * 0.01f, t);
+
+					refractionLight = traceRay(world, refractionRay, recursivityDepth - 1) * material->Kt.GetColor(info);
+				}
+				*/
+
+				bool entering;
+				gmtl::Vec3f t = transmittedDirection(entering, info.normal, info.ray.getDir(), material);
+
+				gmtl::Rayf refractionRay = gmtl::Rayf(info.position + t * 0.01f, t);
+
+				refractionLight = traceRay(world, refractionRay, recursivityDepth - 1) * material->Kt.GetColor(info);
+
+			}
 		}
 
 		return Spectrum(difusoRojo + especularRojo + ambienteRojo + reflexionLight[0] + refractionLight[0],
@@ -248,7 +339,7 @@ void render_image(World* world, unsigned int dimX, unsigned int dimY, float* ima
 			//Calcular rayo desde cámara a pixel
 			Ray ray = camera->generateRay(j, i);
 
-			Spectrum totalColor = traceRay(world, ray, 2);
+			Spectrum totalColor = traceRay(world, ray, 4);
 
 			image[(i * dimX * 3) + (j * 3)] = totalColor[0];
 			image[(i * dimX * 3) + (j * 3) + 1] = totalColor[1];
