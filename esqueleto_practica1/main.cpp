@@ -25,6 +25,7 @@
 
 #include <iostream>
 
+
 int g_RenderMaxDepth = 12;
 
 extern int g_pixel_samples;
@@ -330,7 +331,8 @@ void render_image(World* world, unsigned int dimX, unsigned int dimY, float* ima
 {
 	Camera* camera = world->getCamera();
 
-
+	unsigned int acc = 0;
+	#pragma omp parallel for schedule(dynamic)
 	for (int i = 0; i < dimY; ++i)
 	{
 		for (int j = 0; j < dimX; ++j)
@@ -339,13 +341,16 @@ void render_image(World* world, unsigned int dimX, unsigned int dimY, float* ima
 			//Calcular rayo desde cámara a pixel
 			Ray ray = camera->generateRay(j, i);
 
-			Spectrum totalColor = traceRay(world, ray, 4);
+			Spectrum totalColor = traceRay(world, ray, 2);
 
 			image[(i * dimX * 3) + (j * 3)] = totalColor[0];
 			image[(i * dimX * 3) + (j * 3) + 1] = totalColor[1];
 			image[(i * dimX * 3) + (j * 3) + 2] = totalColor[2];
 			
 		}
+
+		acc++;
+		printf("\r%f", (float)acc/dimY);
 	}
 
 
