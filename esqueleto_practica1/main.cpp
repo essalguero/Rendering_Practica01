@@ -196,32 +196,37 @@ Spectrum traceRay(World* world, Ray& ray, int recursivityDepth = 0)
 
 
 
-		Spectrum  nextLevelLight = Spectrum();
+		Spectrum  reflexionLight = Spectrum();
+		Spectrum  refractionLight = Spectrum();
 		if (recursivityDepth > 0) {
 
-			if (material->Kr.GetColor(info)[0] != 0.0f || material->Kr.GetColor(info)[1] != 0.0f || material->Kr.GetColor(info)[2] != 0.0f)
-			{
-				info.material->Ka_color.GetColor(info);
-			}
-
-			// Calculo de la dirección reflejada
-
+			// Calculo de la dirección de reflexión
 			gmtl::Vec3f vVector = ray.getDir();
-
 			gmtl::Vec3f rVector;
-
 			gmtl::reflect(rVector, vVector, info.normal);
+			gmtl::Rayf reflexionRay = gmtl::Rayf(info.position + rVector * 0.01f, rVector);
 
-			gmtl::Rayf nextRay = gmtl::Rayf(info.position + rVector * 0.01f, rVector);
+			reflexionLight = traceRay(world, reflexionRay, recursivityDepth - 1) * material->Kr.GetColor(info);
 
-			nextLevelLight = traceRay(world, nextRay, --recursivityDepth) * material->Kr.GetColor(info);
+			// Calculo de la dirección de refracción
+			//material->refractionIndex
 
+			float c1 = gmtl::dot(ray.getDir(), info.normal);
 
+			gmtl::Vec3f st = material->refractionIndex * (-ray.getDir() + c1 * info.normal);
+
+			float c2 = sqrt(1 - ((material->refractionIndex * material->refractionIndex) * (1 - (c1 * c1))));
+
+			gmtl::Vec3f t = material->refractionIndex * -ray.getDir() + (material->refractionIndex * c1 - c2) * info.normal;
+
+			gmtl::Rayf refractionRay = gmtl::Rayf(info.position + t * 0.01f, t);
+
+			refractionLight = traceRay(world, refractionRay, recursivityDepth - 1) * material->Kt.GetColor(info);
 		}
 
-		return Spectrum(difusoRojo + especularRojo + ambienteRojo + nextLevelLight[0],
-			difusoVerde + especularVerde + ambienteVerde + nextLevelLight[1],
-			difusoAzul + especularAzul + ambienteAzul + nextLevelLight[2]);
+		return Spectrum(difusoRojo + especularRojo + ambienteRojo + reflexionLight[0] + refractionLight[0],
+			difusoVerde + especularVerde + ambienteVerde + reflexionLight[1] + refractionLight[1],
+			difusoAzul + especularAzul + ambienteAzul + reflexionLight[2] + refractionLight[2]);
 
 	}
 	else
